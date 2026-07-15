@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poop Catcher!</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #87CEEB, #E0F6FF);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        h1 {
+            color: #5c3a21;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 0px #fff;
+        }
+
+        #score-board {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 5px 15px;
+            border-radius: 20px;
+            border: 2px solid #5c3a21;
+        }
+
+        #game-area {
+            position: relative;
+            width: 400px;
+            height: 500px;
+            background-color: #f9f9f9;
+            border: 4px solid #5c3a21;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+        }
+
+        #basket {
+            position: absolute;
+            bottom: 10px;
+            left: 175px; /* (400 width / 2) - (50 basket width / 2) */
+            width: 60px;
+            height: 50px;
+            font-size: 45px;
+            line-height: 50px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.05s linear;
+        }
+
+        .poop {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            font-size: 35px;
+            text-align: center;
+            line-height: 40px;
+        }
+
+        #game-over-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(92, 58, 33, 0.85);
+            color: white;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        #game-over-screen h2 {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+
+        #restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #5c3a21;
+            background-color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        #restart-btn:hover {
+            background-color: #f0f0f0;
+            transform: scale(1.05);
+        }
+
+        .controls-hint {
+            margin-top: 15px;
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Poop Catcher 💩</h1>
+    <div id="score-board">Score: <span id="score">0</span></div>
+
+    <div id="game-area">
+        <div id="basket">🚽</div>
+        
+        <div id="game-over-screen">
+            <h2>Game Over!</h2>
+            <p>You missed a splash!</p>
+            <p>Final Score: <span id="final-score">0</span></p>
+            <button id="restart-btn" onclick="resetGame()">Play Again</button>
+        </div>
+    </div>
+
+    <div class="controls-hint">
+        Use <b>Left / Right Arrow Keys</b> or <b>Move your Mouse</b> inside the box to control the toilet!
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const basket = document.getElementById('basket');
+        const scoreDisplay = document.getElementById('score');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const gameOverScreen = document.getElementById('game-over-screen');
+
+        const gameWidth = gameArea.clientWidth;
+        const gameHeight = gameArea.clientHeight;
+        const basketWidth = 60;
+
+        let score = 0;
+        let basketX = 170;
+        let poops = [];
+        let gameInterval;
+        let spawnInterval;
+        let isGameOver = false;
+        let baseSpeed = 3;
+        let spawnRate = 1200; // ms
+
+        // Handle Mouse Controls
+        gameArea.addEventListener('mousemove', (e) => {
+            if (isGameOver) return;
+            const rect = gameArea.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            // Center the toilet on the cursor
+            basketX = mouseX - (basketWidth / 2);
+            // Keep within bounds
+            keepBasketInBounds();
+            basket.style.left = basketX + 'px';
+        });
+
+        // Handle Keyboard Controls
+        document.addEventListener('keydown', (e) => {
+            if (isGameOver) return;
+            if (e.key === 'ArrowLeft') {
+                basketX -= 25;
+            } else if (e.key === 'ArrowRight') {
+                basketX += 25;
+            }
+            keepBasketInBounds();
+            basket.style.left = basketX + 'px';
+        });
+
+        function keepBasketInBounds() {
+            if (basketX < 0) basketX = 0;
+            if (basketX > gameWidth - basketWidth) basketX = gameWidth - basketWidth;
+        }
+
+        // Spawn falling items
+        function spawnPoop() {
+            if (isGameOver) return;
+
+            const poop = document.createElement('div');
+            poop.className = 'poop';
+            poop.innerText = '💩';
+            
+            // Random horizontal position
+            const randomX = Math.floor(Math.random() * (gameWidth - 40));
+            poop.style.left = randomX + 'px';
+            poop.style.top = '0px';
+
+            gameArea.appendChild(poop);
+
+            // Track poop data
+            poops.push({
+                element: poop,
+                x: randomX,
+                y: 0,
+                speed: baseSpeed + (score * 0.15) // Gradually speeds up as score increases
+            });
+        }
+
+        // Main game loop
+        function updateGame() {
+            for (let i = poops.length - 1; i >= 0; i--) {
+                let p = poops[i];
+                p.y += p.speed;
+                p.element.style.top = p.y + 'px';
+
+                // Check Collision with Toilet
+                // Toilet is at bottom: 10px, height: 50px, meaning y range is roughly gameHeight - 60 to gameHeight - 10
+                if (p.y >= (gameHeight - 65) && p.y <= (gameHeight - 20)) {
+                    if (p.x + 30 >= basketX && p.x <= basketX + basketWidth) {
+                        // Caught it!
+                        score++;
+                        scoreDisplay.innerText = score;
+                        p.element.remove();
+                        poops.splice(i, 1);
+                        continue;
+                    }
+                }
+
+                // Hit the floor (Missed!)
+                if (p.y > gameHeight) {
+                    endGame();
+                    break;
+                }
+            }
+        }
+
+        function endGame() {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            clearInterval(spawnInterval);
+            finalScoreDisplay.innerText = score;
+            gameOverScreen.style.display = 'flex';
+            
+            // Clear out remaining elements
+            poops.forEach(p => p.element.remove());
+            poops = [];
+        }
+
+        function resetGame() {
+            score = 0;
+            scoreDisplay.innerText = score;
+            basketX = 170;
+            basket.style.left = basketX + 'px';
+            isGameOver = false;
+            gameOverScreen.style.display = 'none';
+
+            // Clean up any stray elements
+            document.querySelectorAll('.poop').forEach(el => el.remove());
+            poops = [];
+
+            // Restart loops
+            gameInterval = setInterval(updateGame, 20);
+            spawnInterval = setInterval(spawnPoop, spawnRate);
+        }
+
+        // Start the game for the first time
+        resetGame();
+    </script>
+</body>
+</html>
